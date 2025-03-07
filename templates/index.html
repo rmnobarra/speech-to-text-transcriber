@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Speech-to-Text Transcriber</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #0d6efd;
+            background-color: #e9ecef;
+        }
+        .upload-area i {
+            font-size: 48px;
+            color: #6c757d;
+        }
+        .progress-container {
+            margin-top: 20px;
+        }
+        .result-container {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .result-text {
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .job-card {
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+        .job-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .language-badge {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-soundwave"></i> Whisper Transcriber
+            </a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Upload Audio File</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="upload-form">
+                            <div class="upload-area" id="upload-area">
+                                <input type="file" id="file-input" accept=".mp3,.wav,.ogg" hidden>
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <h5 class="mt-3">Drag & Drop or Click to Upload</h5>
+                                <p class="text-muted">Supported formats: MP3, WAV, OGG (Max 100MB)</p>
+                                <div id="file-info" class="mt-3 d-none">
+                                    <span class="badge bg-primary" id="file-name"></span>
+                                </div>
+                            </div>
+
+                            <div class="row mt-4">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="model-select" class="form-label">Model Size</label>
+                                        <select class="form-select" id="model-select" name="model">
+                                            <option value="tiny">Tiny (Fastest, lowest accuracy)</option>
+                                            <option value="base" selected>Base (Good balance)</option>
+                                            <option value="small">Small (Better accuracy)</option>
+                                            <option value="medium">Medium (High accuracy)</option>
+                                            <option value="large">Large (Highest accuracy, slowest)</option>
+                                        </select>
+                                        <div class="form-text">Larger models provide better accuracy but take longer to process.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="language-select" class="form-label">Language</label>
+                                        <select class="form-select" id="language-select" name="language">
+                                            <option value="auto" selected>Auto-detect language</option>
+                                            <option value="en">English</option>
+                                            {% for code, name in languages %}
+                                                {% if code != 'en' %}
+                                                    <option value="{{ code }}">{{ name }}</option>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text">Specifying the correct language improves accuracy.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2 mt-3">
+                                <button type="submit" class="btn btn-primary" id="transcribe-btn" disabled>
+                                    <i class="bi bi-mic"></i> Transcribe Audio
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="progress-container d-none" id="progress-container">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 id="progress-status">Processing...</h6>
+                                    <div class="progress mb-3">
+                                        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    <p class="text-muted mb-0" id="progress-info">Please wait while we process your audio file.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="result-container d-none" id="result-container">
+                            <h5>Transcription Result</h5>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div id="language-detected"></div>
+                                <button class="btn btn-sm btn-primary" id="download-btn">
+                                    <i class="bi bi-download"></i> Download
+                                </button>
+                            </div>
+                            <div class="result-text" id="result-text"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Recent Jobs</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="jobs-container">
+                            <p class="text-muted text-center" id="no-jobs-message">No recent transcription jobs</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">About</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>This web application uses OpenAI's Whisper model to transcribe speech in audio files to text.</p>
+                        <p>Features:</p>
+                        <ul>
+                            <li>Support for MP3, WAV, and OGG formats</li>
+                            <li>Multiple model sizes for different accuracy needs</li>
+                            <li>Support for 90+ languages with auto-detection</li>
+                            <li>Real-time progress tracking</li>
+                        </ul>
+                        <p class="mb-0"><small class="text-muted">Powered by Whisper and Flask</small></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            const uploadForm = document.getElementById('upload-form');
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            const fileInfo = document.getElementById('file-info');
+            const fileName = document.getElementById('file-name');
+            const transcribeBtn = document.getElementById('transcribe-btn');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            const progressStatus = document.getElementById('progress-status');
+            const progressInfo = document.getElementById('progress-info');
+            const resultContainer = document.getElementById('result-container');
+            const resultText = document.getElementById('result-text');
+            const downloadBtn = document.getElementById('download-btn');
+            const languageDetected = document.getElementById('language-detected');
+            const jobsContainer = document.getElementById('jobs-container');
+            const noJobsMessage = document.getElementById('no-jobs-message');
+            
+            // Current job tracking
+            let currentJobId = null;
+            let statusCheckInterval = null;
+            let jobs = [];
+
+            // Handle file selection
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files.length > 0) {
+                    const file = fileInput.files[0];
+                    fileName.textContent = file.name;
+                    fileInfo.classList.remove('d-none');
+                    transcribeBtn.disabled = false;
+                } else {
+                    fileInfo.classList.add('d-none');
+                    transcribeBtn.disabled = true;
+                }
+            });
+
+            // Handle drag and drop
+            uploadArea.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, function() {
+                    uploadArea.classList.add('dragover');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, function() {
+                    uploadArea.classList.remove('dragover');
+                }, false);
+            });
+
+            uploadArea.addEventListener('drop', function(e) {
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    fileInput.files = e.dataTransfer.files;
+                    fileName.textContent = file.name;
+                    fileInfo.classList.remove('d-none');
+                    transcribeBtn.disabled = false;
+                }
+            }, false);
+
+            // Handle form submission
+            uploadForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                if (!fileInput.files.length) {
+                    alert('Please select a file first.');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('model', document.getElementById('model-select').value);
+                formData.append('language', document.getElementById('language-select').value);
+
+                // Show progress container
+                progressContainer.classList.remove('d-none');
+                resultContainer.classList.add('d-none');
+                progressBar.style.width = '0%';
+                progressStatus.textContent = 'Uploading...';
+                progressInfo.textContent = 'Uploading your audio file to the server.';
+
+                // Disable form
+                transcribeBtn.disabled = true;
+
+                // Upload file
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    // Store job ID and start checking status
+                    currentJobId = data.job_id;
+                    
+                    // Add job to list
+                    addJobToList({
+                        id: data.job_id,
+                        filename: fileInput.files[0].name,
+                        status: 'queued',
+                        model: document.getElementById('model-select').value,
+                        language: document.getElementById('language-select').value
+                    });
+                    
+                    // Start checking status
+                    checkJobStatus();
+                    statusCheckInterval = setInterval(checkJobStatus, 1000);
+                })
+                .catch(error => {
+                    progressStatus.textContent = 'Error';
+                    progressInfo.textContent = error.message;
+                    progressBar.classList.remove('progress-bar-animated');
+                    progressBar.classList.add('bg-danger');
+                });
+            });
+
+            // Check job status
+            function checkJobStatus() {
+                if (!currentJobId) return;
+
+                fetch(`/status/${currentJobId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        // Update job in list
+                        updateJobInList(data);
+
+                        // Update progress based on status
+                        switch (data.status) {
+                            case 'queued':
+                                progressStatus.textContent = 'Queued';
+                                progressInfo.textContent = 'Your job is queued for processing.';
+                                progressBar.style.width = '10%';
+                                break;
+                            
+                            case 'processing':
+                                let progressText = 'Processing your audio...';
+                                let progress = 10; // Default progress
+                                
+                                if (data.stage === 'loading_model') {
+                                    progressStatus.textContent = 'Loading Model';
+                                    progressText = `Loading the ${data.model} model...`;
+                                    progress = 10 + (data.progress * 0.2); // 10-30%
+                                } else if (data.stage === 'transcribing') {
+                                    progressStatus.textContent = 'Transcribing';
+                                    progressText = 'Converting speech to text...';
+                                    progress = 30 + (data.progress * 0.7); // 30-100%
+                                }
+                                
+                                progressInfo.textContent = progressText;
+                                progressBar.style.width = `${progress}%`;
+                                break;
+                            
+                            case 'completed':
+                                progressStatus.textContent = 'Completed';
+                                progressInfo.textContent = 'Transcription completed successfully!';
+                                progressBar.style.width = '100%';
+                                progressBar.classList.remove('progress-bar-animated');
+                                progressBar.classList.add('bg-success');
+                                
+                                // Stop checking status
+                                clearInterval(statusCheckInterval);
+                                
+                                // Fetch and display result
+                                fetchTranscriptionResult();
+                                break;
+                            
+                            case 'failed':
+                                progressStatus.textContent = 'Failed';
+                                progressInfo.textContent = data.error || 'An error occurred during transcription.';
+                                progressBar.style.width = '100%';
+                                progressBar.classList.remove('progress-bar-animated');
+                                progressBar.classList.add('bg-danger');
+                                
+                                // Stop checking status
+                                clearInterval(statusCheckInterval);
+                                break;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking job status:', error);
+                    });
+            }
+
+            // Fetch transcription result
+            function fetchTranscriptionResult() {
+                fetch(`/download/${currentJobId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch transcription result');
+                        }
+                        return response.text();
+                    })
+                    .then(text => {
+                        // Display result
+                        resultContainer.classList.remove('d-none');
+                        resultText.textContent = text;
+                        
+                        // Check if language was detected
+                        fetch(`/status/${currentJobId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.detected_language) {
+                                    languageDetected.innerHTML = `<span class="badge bg-info language-badge">Detected Language: ${data.detected_language.name}</span>`;
+                                } else {
+                                    languageDetected.innerHTML = '';
+                                }
+                            });
+                    })
+                    .catch(error => {
+                        console.error('Error fetching result:', error);
+                    });
+            }
+
+            // Download transcription
+            downloadBtn.addEventListener('click', function() {
+                if (currentJobId) {
+                    window.location.href = `/download/${currentJobId}`;
+                }
+            });
+
+            // Job list management
+            function addJobToList(job) {
+                // Add to jobs array
+                jobs.unshift(job);
+                if (jobs.length > 5) {
+                    jobs.pop(); // Keep only 5 most recent jobs
+                }
+                
+                // Update UI
+                updateJobsList();
+            }
+
+            function updateJobInList(updatedJob) {
+                // Update in jobs array
+                const index = jobs.findIndex(job => job.id === updatedJob.id);
+                if (index !== -1) {
+                    jobs[index] = updatedJob;
+                    updateJobsList();
+                }
+            }
+
+            function updateJobsList() {
+                if (jobs.length === 0) {
+                    noJobsMessage.classList.remove('d-none');
+                    return;
+                }
+                
+                noJobsMessage.classList.add('d-none');
+                
+                // Clear container
+                jobsContainer.innerHTML = '';
+                
+                // Add job cards
+                jobs.forEach(job => {
+                    const card = document.createElement('div');
+                    card.className = 'card job-card';
+                    
+                    // Determine status badge
+                    let statusBadge = '';
+                    switch (job.status) {
+                        case 'queued':
+                            statusBadge = '<span class="badge bg-secondary">Queued</span>';
+                            break;
+                        case 'processing':
+                            statusBadge = '<span class="badge bg-primary">Processing</span>';
+                            break;
+                        case 'completed':
+                            statusBadge = '<span class="badge bg-success">Completed</span>';
+                            break;
+                        case 'failed':
+                            statusBadge = '<span class="badge bg-danger">Failed</span>';
+                            break;
+                    }
+                    
+                    // Create language badge if available
+                    let languageBadge = '';
+                    if (job.detected_language) {
+                        languageBadge = `<span class="badge bg-info language-badge">${job.detected_language.name}</span>`;
+                    } else if (job.language && job.language !== 'auto') {
+                        const languageName = document.querySelector(`#language-select option[value="${job.language}"]`).textContent;
+                        languageBadge = `<span class="badge bg-info language-badge">${languageName}</span>`;
+                    }
+                    
+                    // Create model badge
+                    const modelBadge = `<span class="badge bg-dark language-badge">${job.model}</span>`;
+                    
+                    card.innerHTML = `
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0 text-truncate" style="max-width: 150px;">${job.filename}</h6>
+                                ${statusBadge}
+                            </div>
+                            <div class="mt-1">
+                                ${modelBadge}
+                                ${languageBadge}
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Add click handler to load this job
+                    if (job.status === 'completed') {
+                        card.style.cursor = 'pointer';
+                        card.addEventListener('click', function() {
+                            currentJobId = job.id;
+                            fetchTranscriptionResult();
+                            progressContainer.classList.add('d-none');
+                        });
+                    }
+                    
+                    jobsContainer.appendChild(card);
+                });
+            }
+
+            // Reset form
+            function resetForm() {
+                uploadForm.reset();
+                fileInfo.classList.add('d-none');
+                transcribeBtn.disabled = true;
+                progressContainer.classList.add('d-none');
+                progressBar.style.width = '0%';
+                progressBar.classList.add('progress-bar-animated');
+                progressBar.classList.remove('bg-success', 'bg-danger');
+            }
+        });
+    </script>
+</body>
+</html>
+
