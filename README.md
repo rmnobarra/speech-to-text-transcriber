@@ -203,7 +203,11 @@ Then open your web browser and navigate to:
 http://127.0.0.1:5000
 ```
 
-For production deployment, consider using Gunicorn or uWSGI with Nginx.
+### Screenshot
+
+![Web Interface Screenshot](src/img/speech-to-text-transcriber-ui.png)
+
+***For production deployment, consider using Gunicorn or uWSGI with Nginx.***
 
 ### Using the Web Interface
 
